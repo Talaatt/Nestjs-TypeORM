@@ -5,7 +5,9 @@ import { EntityManager, Repository } from 'typeorm';
 import { Item } from './entities/item.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Listing } from './entities/listing.entity';
-
+import { CreateCommentDto } from './dto/create-comment.dto';
+import { Comment } from './entities/comment.entity';
+import { Tag } from './entities/tag.entinty';
 @Injectable()
 export class ItemsService {
   constructor(
@@ -29,6 +31,8 @@ export class ItemsService {
         where: { id },
         relations: {
         listing: true,
+        comments: true,
+        tags: true
         },
         });
     if (!item) {
@@ -38,12 +42,30 @@ export class ItemsService {
   }
 
   async update(id: number, updateItemDto: UpdateItemDto) {
-    const item = await this.findOne(id);
-    item.public = updateItemDto.public;
-    await this.itemsRepository.save(item);
-    return item;
+    return this.entityManager.transaction(async (entityManager) => {
+      const item = await entityManager.findOne(Item, { where: { id } });
+      if (!item) {
+        throw new NotFoundException(`Item ${id} not found`);
+      }
 
-  }
+      item.public = updateItemDto.public;
+
+      const comments = updateItemDto.comment.map((createCommentDto) =>
+        entityManager.create(Comment, createCommentDto),
+      );
+      item.comments = comments;
+
+      await entityManager.save(item);
+      throw new Error('Simulated error for testing transaction rollback');
+
+      const tag = entityManager.create(Tag, {
+        content: `${Math.random()}`,
+      });
+      await entityManager.save(tag);
+
+      return item;
+    });
+  } 
 
   async remove(id: number) {
     const item = await this.findOne(id);
